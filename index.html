@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS DB Logger</title>
+    <title>System Capture</title>
     <style>
         body { font-family: sans-serif; background: #000; color: #3ecf8e; text-align: center; padding: 20px; }
         .card { background: #111; padding: 30px; border-radius: 20px; border: 1px solid #333; max-width: 350px; margin: auto; }
@@ -18,7 +18,7 @@
     </div>
 
 <script>
-    // --- IMPORTANT: COPY PASTE FROM SUPABASE SETTINGS ---
+    // --- YOUR PRIVATE SETTINGS ---
     const SB_URL = "https://yigmlvoyihpimgvpntlx.supabase.co"; 
     const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZ21sdm95aWhwaW1ndnBudGx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwOTEwMzksImV4cCI6MjA4MjY2NzAzOX0.fjChTuOhD6fFKqh4ZEK0TPt2BO8c8y_j05uslfkDCko";
 
@@ -27,7 +27,7 @@
         out.textContent = "> Getting GPS (stay near window)...";
 
         try {
-            // 1. Get Real GPS
+            // 1. Get GPS with 10s timeout
             const pos = await new Promise((res, rej) => {
                 navigator.geolocation.getCurrentPosition(res, rej, { 
                     enableHighAccuracy: true, timeout: 10000 
@@ -36,14 +36,14 @@
 
             out.textContent += "\n> GPS OK. Getting IPv4...";
 
-            // 2. Get IPv4 and Geo
+            // 2. Get Network Info
             const ipRes = await fetch('https://api.ipify.org?format=json');
             const { ip } = await ipRes.json();
             
             const geoRes = await fetch(`https://ipapi.co/${ip}/json/`);
             const g = await geoRes.json();
 
-            // 3. Structure JSONB
+            // 3. Structure JSONB for the 'data' column
             const jsonb = {
                 "ip": ip,
                 "isp": { "asn": g.asn, "isp": g.org, "org": g.org },
@@ -58,13 +58,14 @@
 
             out.textContent += "\n> Syncing to DB...";
 
-            // 4. POST with correct headers
+            // 4. POST to your specific table: geo_logs
             const response = await fetch(`${SB_URL}/rest/v1/geo_logs`, {
                 method: 'POST',
                 headers: {
                     'apikey': SB_KEY,
                     'Authorization': `Bearer ${SB_KEY}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal' // Bypasses many CORS pre-flight issues
                 },
                 body: JSON.stringify({
                     ip: ip,
@@ -74,11 +75,16 @@
                 })
             });
 
-            if (!response.ok) throw new Error("DB Error: " + response.status);
-            out.innerHTML = "✅ SUCCESS! Data is in Supabase.";
+            if (!response.ok) {
+                const errDetail = await response.text();
+                throw new Error("DB Error: " + response.status + " - " + errDetail);
+            }
+            
+            out.innerHTML = "<span style='color:white; font-weight:bold;'>✅ SUCCESS! DATA RECORDED</span>";
 
         } catch (e) {
-            out.innerHTML = "❌ FAILED: " + e.message;
+            out.innerHTML = "<span style='color:#ff453a'>❌ FAILED</span>\n" + e.message;
+            console.error(e);
         }
     }
 </script>
