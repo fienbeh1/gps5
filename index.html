@@ -3,90 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Data Logger</title>
+    <title>IPv4 GPS Logger</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: #1e1e1e; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 400px; border: 1px solid #333; }
-        h2 { margin-top: 0; color: #3ecf8e; font-size: 20px; }
-        #status-indicator { padding: 8px; border-radius: 4px; font-size: 12px; margin-bottom: 20px; font-weight: bold; }
-        .secure { background: rgba(62, 207, 142, 0.2); color: #3ecf8e; }
-        .insecure { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
-        button { background: #3ecf8e; color: #121212; border: none; padding: 15px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; font-size: 16px; transition: transform 0.1s; }
-        button:active { transform: scale(0.98); }
-        #log { margin-top: 20px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; color: #aaa; background: #000; padding: 12px; border-radius: 6px; overflow-wrap: break-word; white-space: pre-wrap; border: 1px solid #333; min-height: 80px; }
+        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .card { background: #1e1e1e; padding: 25px; border-radius: 15px; border: 1px solid #333; max-width: 400px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        button { background: #3ecf8e; color: #121212; border: none; padding: 18px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; font-size: 16px; }
+        #log { margin-top: 20px; font-family: monospace; font-size: 11px; color: #00ff00; background: #000; padding: 12px; border-radius: 5px; text-align: left; min-height: 100px; border: 1px solid #333; white-space: pre-wrap; word-break: break-all; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div id="status-indicator">Checking Security...</div>
-    <h2>Data Capture</h2>
-    <button onclick="startCapture()">SEND TO DATABASE</button>
-    <div id="log">Awaiting command...</div>
+<div class="card">
+    <h2 style="color:#3ecf8e">System Logger</h2>
+    <button onclick="processData()">CAPTURE & SAVE</button>
+    <div id="log">Ready to capture...</div>
 </div>
 
 <script>
-    // --- SET YOUR CREDENTIALS HERE ---
-    const SB_URL = "https://yigmlvoyihpimgvpntlx.supabase.co"; 
-    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZ21sdm95aWhwaW1ndnBudGx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwOTEwMzksImV4cCI6MjA4MjY2NzAzOX0.fjChTuOhD6fFKqh4ZEK0TPt2BO8c8y_j05uslfkDCko";
-    // --------------------------------
+    // 1. YOUR CREDENTIALS
+    const SB_URL = "YOUR_SUPABASE_URL"; 
+    const SB_KEY = "YOUR_SUPABASE_ANON_KEY";
 
-    const log = document.getElementById('log');
-    const statusBox = document.getElementById('status-indicator');
-
-    // Security Check for GPS
-    if (window.location.protocol === 'https:') {
-        statusBox.textContent = "HTTPS SECURE ✅";
-        statusBox.className = "secure";
-    } else {
-        statusBox.textContent = "INSECURE ❌ (GPS will fail)";
-        statusBox.className = "insecure";
-    }
-
-    async function startCapture() {
-        log.textContent = "Initializing GPS hardware...";
-
-        const getCoords = () => {
-            return new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve(pos),
-                    (err) => reject(err),
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 10000, // 10 second timeout
-                        maximumAge: 0
-                    }
-                );
-            });
-        };
+    async function processData() {
+        const log = document.getElementById('log');
+        log.textContent = ">>> Accessing GPS Hardware...";
 
         try {
-            // 1. Get Real GPS Coordinates
-            const position = await getCoords();
-            const lat = position.coords.latitude;
-            const lon = position.coords.longitude;
-            log.textContent = `GPS Locked: ${lat.toFixed(4)}, ${lon.toFixed(4)}\nFetching IP...`;
+            // 2. Get Real GPS Coordinates
+            const pos = await new Promise((res, rej) => {
+                navigator.geolocation.getCurrentPosition(res, rej, { 
+                    enableHighAccuracy: true, 
+                    timeout: 10000 
+                });
+            });
 
-            // 2. Get Network/ISP Info
-            const ipRes = await fetch('https://ipapi.co/json/');
-            const d = await ipRes.json();
+            log.textContent += "\n>>> Forcing IPv4 Lookup...";
 
-            // 3. Structure JSONB Data
+            // 3. Get IPv4 and ISP Data
+            // We use 'ipv4.icanhazip.com' to ensure we don't get the IPv6
+            const [ipv4, geoRes] = await Promise.all([
+                fetch('https://ipv4.icanhazip.com').then(r => r.text()),
+                fetch('https://ipapi.co/json/').then(r => r.json())
+            ]);
+
+            const cleanIPv4 = ipv4.trim();
+
+            // 4. Structure JSONB (Your Format)
             const jsonb = {
-                "ip": d.ip,
-                "isp": { "asn": d.asn, "org": d.org, "isp": d.org },
-                "location": {
-                    "country": d.country_name, "country_code": d.country_code,
-                    "city": d.city, "state": d.region, "zipcode": d.postal,
-                    "latitude": lat, 
-                    "longitude": lon,
-                    "timezone": d.timezone, "localtime": new Date().toISOString()
+                "ip": cleanIPv4,
+                "isp": { 
+                    "asn": geoRes.asn, 
+                    "isp": geoRes.org, 
+                    "org": geoRes.org 
                 },
-                "risk": { "is_mobile": true, "is_vpn": false, "is_tor": false, "is_proxy": false, "is_datacenter": false, "risk_score": 0 }
+                "location": {
+                    "country": geoRes.country_name,
+                    "country_code": geoRes.country_code,
+                    "city": geoRes.city,
+                    "state": geoRes.region,
+                    "zipcode": geoRes.postal,
+                    "latitude": pos.coords.latitude,
+                    "longitude": pos.coords.longitude,
+                    "timezone": geoRes.timezone,
+                    "localtime": new Date().toISOString()
+                },
+                "risk": { 
+                    "is_mobile": true, 
+                    "is_vpn": false, 
+                    "risk_score": 0 
+                }
             };
 
-            // 4. Send to Supabase with your specific headers (columns)
-            log.textContent = "Sending to Database...";
+            log.textContent += "\n>>> Connecting to Supabase...";
+
+            // 5. Send to DB with your specific headers
             const save = await fetch(`${SB_URL}/rest/v1/geo_logs`, {
                 method: 'POST',
                 headers: {
@@ -96,29 +86,24 @@
                     'Prefer': 'return=minimal'
                 },
                 body: JSON.stringify({
-                    ip: d.ip,             // Your Column 1
-                    data: jsonb,          // Your Column 2 (JSONB)
-                    status: 'procesado',  // Your Column 3
-                    bloque_origen: d.ip   // Your Column 4
+                    ip: cleanIPv4,        // Column: ip
+                    data: jsonb,          // Column: data
+                    status: 'procesado',  // Column: status
+                    bloque_origen: cleanIPv4 // Column: bloque_origen
                 })
             });
 
             if (save.ok) {
-                log.innerHTML = `<span style="color:#3ecf8e">✅ SUCCESS</span>\n\nIP: ${d.ip}\nLat: ${lat}\nLon: ${lon}\nStatus: procesado`;
+                log.innerHTML = `<span style="color:#3ecf8e">>>> ✅ RECORD SAVED</span>\n\nIPv4: ${cleanIPv4}\nGPS: ${pos.coords.latitude}, ${pos.coords.longitude}\nStatus: procesado`;
             } else {
-                const errText = await save.text();
-                log.innerHTML = `<span style="color:#ff453a">❌ DB ERROR</span>\n${errText}`;
+                const err = await save.text();
+                throw new Error("DB Save Failed: " + err);
             }
 
         } catch (e) {
-            console.error(e);
-            let msg = e.message;
-            if (e.code === 1) msg = "Permission Denied. Enable Location in Browser Settings.";
-            if (e.code === 3) msg = "GPS Timeout. Go near a window/outside.";
-            log.innerHTML = `<span style="color:#ff453a">❌ ERROR</span>\n${msg}`;
+            log.innerHTML = `<span style="color:#ff453a">>>> ❌ ERROR</span>\n${e.message}`;
         }
     }
 </script>
-
 </body>
 </html>
